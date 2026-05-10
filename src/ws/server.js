@@ -30,6 +30,12 @@ export function attachWebsocketServer(server) {
         );
 
         if (pathname !== '/ws') {
+            socket.write(
+                'HTTP/1.1 404 Not Found\r\n' +
+                'Connection: close\r\n' +
+                '\r\n'
+            );
+            socket.destroy();
             return;
         }
 
