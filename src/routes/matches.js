@@ -59,8 +59,7 @@ matchRouter.post('/', async (req, res) => {
         console.error(error);
 
         res.status(500).json({
-            error: 'Failed to create match.',
-            details: error.message
+            error: 'Failed to create match.'
         });
     }
 })
