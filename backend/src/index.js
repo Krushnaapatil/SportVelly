@@ -16,11 +16,35 @@ const server = http.createServer(app);
 
 app.use(express.json());
 
+const allowedOrigins = new Set(
+    (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+);
+
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+
+    if (origin && allowedOrigins.has(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    }
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(204);
+    }
+
+    next();
+});
+
 app.get('/', (req, res) => {
     res.send('hello from Express server');
 });
 
-app.use(securityMiddleware());
+// app.use(securityMiddleware());
 
 app.use('/matches', matchRouter)
 app.use('/matches/:id/commentary', commentaryRouter);
