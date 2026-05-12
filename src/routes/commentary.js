@@ -1,71 +1,74 @@
 import { Router } from "express";
-import { commentary } from "../db/schema.js";
-import { db } from "../db/db.js";
+import { eq, desc } from "drizzle-orm";
 import { matchIdParamSchema } from "../validation/matches.js";
 import { createCommentarySchema, listCommentaryQuerySchema } from "../validation/commentary.js";
-import { desc, eq } from "drizzle-orm";
-
-export const commentaryRouter = Router({ mergeParams: true });
+import { db } from "../db/db.js";
+import { commentary } from "../db/schema.js";
 
 const MAX_LIMIT = 100;
 
+export const commentaryRouter = Router({ mergeParams: true });
+
 commentaryRouter.get('/', async (req, res) => {
-    const parsedParams = matchIdParamSchema.safeParse(req.params);
+    const paramsResult = matchIdParamSchema.safeParse(req.params);
 
-    if (!parsedParams.success) {
-        return res.status(400).json({ error: 'Invalid match id.', details: parsedParams.error.issues });
+    if (!paramsResult.success) {
+        return res.status(400).json({ error: 'Invalid match ID.', details: paramsResult.error.issues });
     }
 
-    const parsedQuery = listCommentaryQuerySchema.safeParse(req.query);
-
-    if (!parsedQuery.success) {
-        return res.status(400).json({ error: 'Invalid query.', details: parsedQuery.error.issues });
+    const queryResult = listCommentaryQuerySchema.safeParse(req.query);
+    if (!queryResult.success) {
+        return res.status(400).json({ error: 'Invalid query parameters.', details: queryResult.error.issues });
     }
-
-    const limit = Math.min(parsedQuery.data.limit ?? 100, MAX_LIMIT);
 
     try {
-        const data = await db
+        const { id: matchId } = paramsResult.data;
+        const { limit = 10 } = queryResult.data;
+
+        const safeLimit = Math.min(limit, MAX_LIMIT);
+
+        const results = await db
             .select()
             .from(commentary)
-            .where(eq(commentary.matchId, parsedParams.data.id))
+            .where(eq(commentary.matchId, matchId))
             .orderBy(desc(commentary.createdAt))
-            .limit(limit);
+            .limit(safeLimit);
 
-        res.json({ data });
+        res.status(200).json({ data: results });
     } catch (error) {
-        console.error(error);
-
-        res.status(500).json({ error: 'Failed to list commentary.' });
+        console.error('Failed to fetch commentary:', error);
+        res.status(500).json({ error: 'Failed to fetch commentary.' });
     }
 });
 
 commentaryRouter.post('/', async (req, res) => {
-    const parsedParams = matchIdParamSchema.safeParse(req.params);
+    const paramsResult = matchIdParamSchema.safeParse(req.params);
 
-    if (!parsedParams.success) {
-        return res.status(400).json({ error: 'Invalid match id.', details: parsedParams.error.issues });
+    if (!paramsResult.success) {
+        return res.status(400).json({ error: 'Invalid match ID.', details: paramsResult.error.issues });
     }
 
-    const parsedBody = createCommentarySchema.safeParse(req.body);
+    const bodyResult = createCommentarySchema.safeParse(req.body);
 
-    if (!parsedBody.success) {
-        return res.status(400).json({ error: 'Invalid payload.', details: parsedBody.error.issues });
+    if (!bodyResult.success) {
+        return res.status(400).json({ error: 'Invalid commentary payload.', details: bodyResult.error.issues });
     }
-
-    const { minutes, ...commentaryData } = parsedBody.data;
 
     try {
-        const [event] = await db.insert(commentary).values({
-            ...commentaryData,
-            matchId: parsedParams.data.id,
-            minute: minutes,
+        const { minute, ...rest } = bodyResult.data;
+        const [result] = await db.insert(commentary).values({
+            matchId: paramsResult.data.id,
+            minute,
+            ...rest
         }).returning();
 
-        res.status(201).json({ data: event });
-    } catch (error) {
-        console.error(error);
+        if(res.app.locals.broadcastCommentary) {
+            res.app.locals.broadcastCommentary(result.matchId, result);
+        }
 
+        res.status(201).json({ data: result });
+    } catch (error) {
+        console.error('Failed to create commentary:', error);
         res.status(500).json({ error: 'Failed to create commentary.' });
     }
 });
