@@ -9,6 +9,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
+  "engines": {
+    "node": "20.x"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -16,6 +19,7 @@
   "dependencies": {
     "@arcjet/inspect": "^1.4.0",
     "@arcjet/node": "^1.4.0",
+    "apminsight": "^5.4.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
