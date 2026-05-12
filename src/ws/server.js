@@ -2,6 +2,7 @@ import {WebSocket, WebSocketServer} from 'ws';
 import {wsArcjet} from "../arcjet.js";
 
 const matchSubscribers = new Map();
+const MAX_SUBSCRIPTIONS_PER_SOCKET = 100;
 
 function subscribe(matchId, socket) {
     if(!matchSubscribers.has(matchId)) {
@@ -63,19 +64,49 @@ function handleMessage(socket, data) {
         message = JSON.parse(data.toString());
     } catch {
         sendJson(socket, { type: 'error', message: 'Invalid JSON' });
-    }
-
-    if(message?.type === "subscribe" && Number.isInteger(message.matchId)) {
-        subscribe(message.matchId, socket);
-        socket.subscriptions.add(message.matchId);
-        sendJson(socket, { type: 'subscribed', matchId: message.matchId });
         return;
     }
 
-    if(message?.type === "unsubscribe" && Number.isInteger(message.matchId)) {
-        unsubscribe(message.matchId, socket);
-        socket.subscriptions.delete(message.matchId);
-        sendJson(socket, { type: 'unsubscribed', matchId: message.matchId });
+    if(message?.type === "subscribe") {
+        const { matchId } = message;
+
+        if(!Number.isInteger(matchId) || matchId <= 0) {
+            sendJson(socket, { type: 'error', message: 'Invalid match ID' });
+            return;
+        }
+
+        if(socket.subscriptions.has(matchId)) {
+            sendJson(socket, { type: 'error', message: 'Already subscribed', matchId });
+            return;
+        }
+
+        if(socket.subscriptions.size >= MAX_SUBSCRIPTIONS_PER_SOCKET) {
+            sendJson(socket, { type: 'error', message: 'Subscription limit reached' });
+            return;
+        }
+
+        subscribe(matchId, socket);
+        socket.subscriptions.add(matchId);
+        sendJson(socket, { type: 'subscribed', matchId });
+        return;
+    }
+
+    if(message?.type === "unsubscribe") {
+        const { matchId } = message;
+
+        if(!Number.isInteger(matchId) || matchId <= 0) {
+            sendJson(socket, { type: 'error', message: 'Invalid match ID' });
+            return;
+        }
+
+        if(!socket.subscriptions.has(matchId)) {
+            sendJson(socket, { type: 'error', message: 'Not subscribed', matchId });
+            return;
+        }
+
+        unsubscribe(matchId, socket);
+        socket.subscriptions.delete(matchId);
+        sendJson(socket, { type: 'unsubscribed', matchId });
     }
 }
 
@@ -86,6 +117,8 @@ export function attachWebSocketServer(server) {
         const { pathname } = new URL(req.url, `http://${req.headers.host}`);
 
         if (pathname !== '/ws') {
+            socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+            socket.destroy();
             return;
         }
 
